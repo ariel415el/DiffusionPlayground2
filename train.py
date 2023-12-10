@@ -9,7 +9,7 @@ import os
 import argparse
 
 from utils.data import create_mnist_dataloaders
-from utils.utils import Logger
+from utils.logger import Logger
 
 
 def parse_args():
@@ -34,6 +34,7 @@ def parse_args():
     args = parser.parse_args()
 
     return args
+
 
 def get_model(args, device):
     model = DDPM(timesteps=args.timesteps,
