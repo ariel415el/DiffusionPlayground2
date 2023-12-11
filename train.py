@@ -28,7 +28,8 @@ def parse_args():
     parser.add_argument('--timesteps', type=int, help='sampling steps of DDPM', default=1000)
     parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
     parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=0.995)
-    parser.add_argument('--log_freq', type=int, help='training log message printing frequence', default=10)
+    parser.add_argument('--print_freq', type=int, help='training log message printing frequence', default=10)
+    parser.add_argument('--log_freq', type=int, help='training log message printing frequence', default=5000)
     parser.add_argument('--cpu', action='store_true', help='cpu training')
 
     args = parser.parse_args()
@@ -47,6 +48,12 @@ def get_model(args, device):
     alpha = 1.0 - args.model_ema_decay
     alpha = min(1.0, alpha * adjust)
     model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
+
+    if args.ckpt:
+        ckpt = torch.load(args.ckpt)
+        model_ema.load_state_dict(ckpt["model_ema"])
+        model.load_state_dict(ckpt["model"])
+
     return model, model_ema
 
 
@@ -63,15 +70,12 @@ def main(args):
     loss_fn = nn.MSELoss(reduction='mean')
 
     # load checkpoint
-    if args.ckpt:
-        ckpt = torch.load(args.ckpt)
-        model_ema.load_state_dict(ckpt["model_ema"])
-        model.load_state_dict(ckpt["model"])
+
 
     global_steps = 0
-    for i in range(args.epochs):
+    for epoch in range(args.epochs):
         model.train()
-        for j, image in enumerate(train_dataloader):
+        for image in train_dataloader:
             noise = torch.randn_like(image).to(device)
             image = image.to(device)
             pred = model(image, noise)
@@ -84,22 +88,17 @@ def main(args):
                 model_ema.update_parameters(model)
             global_steps += 1
             loss = loss.detach().cpu().item()
-            logger.log(loss, i, j, scheduler.get_last_lr()[0])
+            logger.log(loss, epoch, global_steps, scheduler.get_last_lr()[0])
 
+            if global_steps % args.log_freq == 0:
+                if logger.is_best_loss(loss):
+                    ckpt = {"model": model.state_dict(),
+                        "model_ema": model_ema.state_dict()}
+                    torch.save(ckpt, os.path.join(logger.out_dir, "best.pth"))
 
-        if i % 1 == 0:
-            if logger.is_best_loss(loss):
-                ckpt = {"model": model.state_dict(),
-                    "model_ema": model_ema.state_dict()}
-                torch.save(ckpt, os.path.join(logger.out_dir, "best.pth"))
-
-            model_ema.eval()
-            samples = model_ema.module.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
-            logger.plot(samples, i)
-
-
-            # samples = model_ema.module.sampling(args.n_samples, clipped_reverse_diffusion=False, device=device)
-            # save_image(samples, "results/steps_{:0>8}_NOCLIP.png".format(global_steps), nrow=int(math.sqrt(args.n_samples)), pad_value=1)
+                model_ema.eval()
+                samples = model_ema.module.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
+                logger.plot(samples, global_steps)
 
 
 if __name__ == "__main__":
