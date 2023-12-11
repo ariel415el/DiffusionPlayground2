@@ -11,7 +11,7 @@ from torchvision.utils import save_image, make_grid
 class Logger:
     def __init__(self, args):
         self.args = args
-        self.out_dir = os.path.join("results", args.train_name)
+        self.out_dir = os.path.join("outputs", args.project_name, args.train_name)
         os.makedirs(self.out_dir, exist_ok=True)
         self.wandb = wandb.init(project='DDPM', dir=self.out_dir, name=args.train_name)
         self.best_loss = np.inf

@@ -14,14 +14,16 @@ from utils.logger import Logger
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Training MNISTDiffusion")
+    parser.add_argument('--project_name', type=str, default='DDPM')
     parser.add_argument('--train_name', type=str, default='test_DDPM')
     parser.add_argument('--data_root', type=str, default='')
+    parser.add_argument('--limit_data', default=None, type=int)
     parser.add_argument('--center_crop', default=None, help='center_crop_data to specified size', type=int)
     parser.add_argument('--gray_scale', action='store_true', default=False, help="Load data as grayscale")
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--im_size', type=int, default=64)
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--ckpt', type=str, help='define checkpoint path', default='')
     parser.add_argument('--n_samples', type=int, help='define sampling amounts after every epoch trained', default=36)
     parser.add_argument('--model_base_dim', type=int, help='base dim of Unet', default=64)
@@ -42,7 +44,7 @@ def get_model(args, device):
                            image_size=args.im_size,
                            in_channels=1 if args.gray_scale else 3,
                            base_dim=args.model_base_dim,
-                           dim_mults=[2, 4, 8, 16]).to(device)
+                           dim_mults=[2, 4]).to(device)
 
     adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
     alpha = 1.0 - args.model_ema_decay

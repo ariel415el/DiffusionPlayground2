@@ -23,6 +23,8 @@ class DiskDataset(Dataset):
     def __init__(self, args):
         super(DiskDataset, self).__init__()
         self.paths = [os.path.join(args.data_root, im_name) for im_name in os.listdir(args.data_root)]
+        if args.limit_data is not None:
+            self.paths = self.paths[:args.limit_data]
         self.transforms = get_transforms(args.im_size, args.center_crop,  args.gray_scale)
 
     def __len__(self):

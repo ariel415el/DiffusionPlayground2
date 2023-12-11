@@ -3,7 +3,8 @@ import torch
 import math
 from tqdm import tqdm
 
-from utils.unet import Unet
+from models import FC
+from models.unet import Unet
 
 
 class DDPM(nn.Module):
@@ -26,6 +27,7 @@ class DDPM(nn.Module):
         self.register_buffer("sqrt_one_minus_alphas_cumprod", torch.sqrt(1. - alphas_cumprod))
 
         self.model = Unet(timesteps, time_embedding_dim, in_channels, in_channels, base_dim, dim_mults)
+        # self.model = FC(image_size, timesteps, time_embedding_dim, in_channels, in_channels, bottleneck_dim=base_dim, n_layers=len(dim_mults))
 
     def forward(self, x, noise):
         # x:NCHW
