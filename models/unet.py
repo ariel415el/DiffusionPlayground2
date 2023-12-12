@@ -137,13 +137,11 @@ class Unet(nn.Module):
     simple unet design without attention
     '''
 
-    def __init__(self, timesteps, time_embedding_dim, in_channels=3, out_channels=2, base_dim=32,
-                 dim_mults=[2, 4, 8, 16, 32, 64]):
+    def __init__(self, timesteps, time_embedding_dim, in_channels=3, out_channels=2, base_dim=32, depth=2):
         super().__init__()
-        assert isinstance(dim_mults, (list, tuple))
         assert base_dim % 2 == 0
 
-        channels = self._cal_channels(base_dim, dim_mults)
+        channels = self._cal_channels(base_dim, [2**(i+1) for i in range(depth)])
 
         self.init_conv = ConvBnSiLu(in_channels, base_dim, 3, 1, 1)
         self.time_embedding = nn.Embedding(timesteps, time_embedding_dim)

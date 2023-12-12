@@ -4,6 +4,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 
 from DDPM import DDPM
+from models import Unet, FC
 from utils.utils import ExponentialMovingAverage
 import os
 import argparse
@@ -16,20 +17,27 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Training MNISTDiffusion")
     parser.add_argument('--project_name', type=str, default='DDPM')
     parser.add_argument('--train_name', type=str, default='test_DDPM')
+
     parser.add_argument('--data_root', type=str, default='')
     parser.add_argument('--limit_data', default=None, type=int)
     parser.add_argument('--center_crop', default=None, help='center_crop_data to specified size', type=int)
     parser.add_argument('--gray_scale', action='store_true', default=False, help="Load data as grayscale")
-    parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--im_size', type=int, default=64)
-    parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--ckpt', type=str, help='define checkpoint path', default='')
-    parser.add_argument('--n_samples', type=int, help='define sampling amounts after every epoch trained', default=36)
+
+    parser.add_argument('--arch', type=str, default='unet')
+    parser.add_argument('--denoiser_depth', type=int, default=2)
     parser.add_argument('--model_base_dim', type=int, help='base dim of Unet', default=64)
     parser.add_argument('--timesteps', type=int, help='sampling steps of DDPM', default=1000)
     parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
     parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=0.995)
+
+    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--epochs', type=int, default=10000)
+
+    parser.add_argument('--wandb', action='store_true', default=False)
+    parser.add_argument('--ckpt', type=str, help='define checkpoint path', default='')
+    parser.add_argument('--n_samples', type=int, help='define sampling amounts after every epoch trained', default=36)
     parser.add_argument('--print_freq', type=int, help='training log message printing frequence', default=10)
     parser.add_argument('--log_freq', type=int, help='training log message printing frequence', default=5000)
     parser.add_argument('--cpu', action='store_true', help='cpu training')
@@ -40,11 +48,14 @@ def parse_args():
 
 
 def get_model(args, device):
-    model = DDPM(timesteps=args.timesteps,
-                           image_size=args.im_size,
-                           in_channels=1 if args.gray_scale else 3,
-                           base_dim=args.model_base_dim,
-                           dim_mults=[2, 4]).to(device)
+    in_channels = 1 if args.gray_scale else 3
+    if args.arch == 'unet':
+        denoiser = Unet(args.timesteps, 256, in_channels, in_channels, args.model_base_dim, depth=args.denoiser_depth)
+    elif args.arch == "fc":
+        denoiser = FC(args.image_size, args.timesteps, 256, in_channels, in_channels, args.model_base_dim, args.denoiser_depth)
+    else:
+        ValueError("bad architecture name")
+    model = DDPM(denoiser, timesteps=args.timesteps,image_size=args.im_size, in_channels=in_channels).to(device)
 
     adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
     alpha = 1.0 - args.model_ema_decay

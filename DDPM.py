@@ -8,8 +8,7 @@ from models.unet import Unet
 
 
 class DDPM(nn.Module):
-    def __init__(self, image_size, in_channels, time_embedding_dim=256, timesteps=1000, base_dim=32,
-                 dim_mults=[1, 2, 4, 8, 16, 32]):
+    def __init__(self, denoiser, image_size, in_channels, timesteps=1000):
         super().__init__()
         self.timesteps = timesteps
         self.in_channels = in_channels
@@ -25,9 +24,7 @@ class DDPM(nn.Module):
         self.register_buffer("alphas_cumprod", alphas_cumprod)
         self.register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
         self.register_buffer("sqrt_one_minus_alphas_cumprod", torch.sqrt(1. - alphas_cumprod))
-
-        self.model = Unet(timesteps, time_embedding_dim, in_channels, in_channels, base_dim, dim_mults)
-        # self.model = FC(image_size, timesteps, time_embedding_dim, in_channels, in_channels, bottleneck_dim=base_dim, n_layers=len(dim_mults))
+        self.model = denoiser
 
     def forward(self, x, noise):
         # x:NCHW

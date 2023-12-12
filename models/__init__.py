@@ -26,7 +26,7 @@ def print_num_params(model):
 if __name__ == "__main__":
     x = torch.randn(15, 3, 64, 64)
     t = torch.randint(0, 1000, (15,))
-    unet = Unet(1000, 256, in_channels=3, out_channels=2, base_dim=32, dim_mults=[2, 4])
+    unet = Unet(1000, 256, in_channels=3, out_channels=2, base_dim=32, depth=2)
     print(print_num_params(unet))
     print(unet(x,t).shape)
 
