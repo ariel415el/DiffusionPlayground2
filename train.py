@@ -43,7 +43,9 @@ def parse_args():
     parser.add_argument('--cpu', action='store_true', help='cpu training')
 
     args = parser.parse_args()
-
+    print("Command line arguments:")
+    for k,v in vars(args).items():
+        print(f"\t- {k}: {v}")
     return args
 
 
