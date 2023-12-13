@@ -28,10 +28,11 @@ def parse_args():
     parser.add_argument('--denoiser_depth', type=int, default=2)
     parser.add_argument('--model_base_dim', type=int, help='base dim of Unet', default=64)
     parser.add_argument('--timesteps', type=int, help='sampling steps of DDPM', default=1000)
-    parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
-    parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=0.995)
 
+    parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
+    parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=1)
     parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--lr_scheduler', action='store_true', default=False)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--epochs', type=int, default=10000)
 
@@ -59,17 +60,19 @@ def get_model(args, device):
         ValueError("bad architecture name")
     model = DDPM(denoiser, timesteps=args.timesteps,image_size=args.im_size, in_channels=in_channels).to(device)
 
-    adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
-    alpha = 1.0 - args.model_ema_decay
-    alpha = min(1.0, alpha * adjust)
-    model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
-
     if args.ckpt:
         ckpt = torch.load(args.ckpt)
-        model_ema.load_state_dict(ckpt["model_ema"])
         model.load_state_dict(ckpt["model"])
 
-    return model, model_ema
+    return model
+
+def get_ema(model, device):
+    if args.model_ema_decay < 1:
+        adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
+        alpha = 1.0 - args.model_ema_decay
+        alpha = min(1.0, alpha * adjust)
+        model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
+    return model_ema
 
 
 def main(args):
@@ -77,15 +80,14 @@ def main(args):
     device = "cpu" if args.cpu else "cuda"
     train_dataloader = create_mnist_dataloaders(args)
 
-    model, model_ema = get_model(args, device)
+    model = get_model(args, device)
 
-    optimizer = AdamW(model.parameters(), lr=args.lr)
-    scheduler = OneCycleLR(optimizer, args.lr, total_steps=args.epochs * len(train_dataloader), pct_start=0.25,
-                           anneal_strategy='cos')
     loss_fn = nn.MSELoss(reduction='mean')
 
-    # load checkpoint
-
+    optimizer = AdamW(model.parameters(), lr=args.lr)
+    if args.lr_scheduler:
+        scheduler = OneCycleLR(optimizer, args.lr, total_steps=args.epochs * len(train_dataloader)
+                                                 , pct_start=0.25, anneal_strategy='cos')
 
     global_steps = 0
     for epoch in range(args.epochs):
@@ -98,21 +100,19 @@ def main(args):
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            scheduler.step()
-            if global_steps % args.model_ema_steps == 0:
-                model_ema.update_parameters(model)
+            if args.lr_scheduler:
+                scheduler.step()
             global_steps += 1
             loss = loss.detach().cpu().item()
-            logger.log(loss, epoch, global_steps, scheduler.get_last_lr()[0])
+            logger.log(loss, epoch, global_steps)
 
             if global_steps % args.log_freq == 0:
                 if logger.is_best_loss(loss):
-                    ckpt = {"model": model.state_dict(),
-                        "model_ema": model_ema.state_dict()}
+                    ckpt = {"model": model.state_dict()}
                     torch.save(ckpt, os.path.join(logger.out_dir, "best.pth"))
 
-                model_ema.eval()
-                samples = model_ema.module.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
+                model.eval()
+                samples = model.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
                 logger.plot(samples, global_steps)
 
 

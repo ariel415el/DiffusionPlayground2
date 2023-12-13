@@ -22,13 +22,13 @@ class Logger:
         else:
             self.wandb = False
 
-    def log(self, loss, epoch, global_step, lr):
+    def log(self, loss, epoch, global_step):
         if self.wandb:
             self.wandb.log({"Loss": loss})
         if global_step % self.args.print_freq == 0:
             start_iteration = 0 # TODO load from ckpt
             it_sec = max(1, global_step - start_iteration) / (time() - self.start)
-            print(f"Global step: {global_step} (Epoch[{epoch}]),loss:{loss:.5f},lr:{lr:.5f} it/sec: {it_sec:.1f}")
+            print(f"Global step: {global_step} (Epoch[{epoch}]),loss:{loss:.5f} it/sec: {it_sec:.1f}")
 
     def is_best_loss(self, loss):
         if loss < self.best_loss:
