@@ -29,12 +29,12 @@ def parse_args():
     parser.add_argument('--model_base_dim', type=int, help='base dim of Unet', default=64)
     parser.add_argument('--timesteps', type=int, help='sampling steps of DDPM', default=1000)
 
+    parser.add_argument('--n_steps', type=int, default=500000)
     parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
     parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=1)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lr_scheduler', action='store_true', default=False)
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--epochs', type=int, default=10000)
 
     parser.add_argument('--wandb', action='store_true', default=False)
     parser.add_argument('--ckpt', type=str, help='define checkpoint path', default='')
@@ -86,12 +86,11 @@ def main(args):
 
     optimizer = AdamW(model.parameters(), lr=args.lr)
     if args.lr_scheduler:
-        scheduler = OneCycleLR(optimizer, args.lr, total_steps=args.epochs * len(train_dataloader)
+        scheduler = OneCycleLR(optimizer, args.lr, total_steps=args.n_steps
                                                  , pct_start=0.25, anneal_strategy='cos')
 
     global_steps = 0
-    for epoch in range(args.epochs):
-        model.train()
+    while global_steps < args.n_steps:
         for image in train_dataloader:
             noise = torch.randn_like(image).to(device)
             image = image.to(device)
@@ -104,7 +103,7 @@ def main(args):
                 scheduler.step()
             global_steps += 1
             loss = loss.detach().cpu().item()
-            logger.log(loss, epoch, global_steps)
+            logger.log(loss, global_steps)
 
             if global_steps % args.log_freq == 0:
                 if logger.is_best_loss(loss):
@@ -114,6 +113,7 @@ def main(args):
                 model.eval()
                 samples = model.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
                 logger.plot(samples, global_steps)
+                model.train()
 
 
 if __name__ == "__main__":
