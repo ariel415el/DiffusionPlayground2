@@ -31,7 +31,7 @@ def parse_args():
 
     parser.add_argument('--n_steps', type=int, default=500000)
     parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
-    parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=1)
+    parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=0.995)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lr_scheduler', action='store_true', default=False)
     parser.add_argument('--batch_size', type=int, default=32)
@@ -66,9 +66,11 @@ def get_model(args, device):
 
     return model
 
-def get_ema(model, device):
+
+def get_ema(args, model, device, dataloader):
+    dataset_size = len(dataloader.dataset)
     if args.model_ema_decay < 1:
-        adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
+        adjust = args.model_ema_steps * (dataset_size / args.n_steps)
         alpha = 1.0 - args.model_ema_decay
         alpha = min(1.0, alpha * adjust)
         model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
@@ -81,6 +83,7 @@ def main(args):
     train_dataloader = create_mnist_dataloaders(args)
 
     model = get_model(args, device)
+    model_ema = get_ema(args, model, device, train_dataloader)
 
     loss_fn = nn.MSELoss(reduction='mean')
 
@@ -101,17 +104,18 @@ def main(args):
             optimizer.zero_grad()
             if args.lr_scheduler:
                 scheduler.step()
+            if global_steps % args.model_ema_steps == 0:
+                model_ema.update_parameters(model)
             global_steps += 1
             loss = loss.detach().cpu().item()
             logger.log(loss, global_steps)
-
             if global_steps % args.log_freq == 0:
                 if logger.is_best_loss(loss):
                     ckpt = {"model": model.state_dict()}
                     torch.save(ckpt, os.path.join(logger.out_dir, "best.pth"))
 
                 model.eval()
-                samples = model.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
+                samples = model.module.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
                 logger.plot(samples, global_steps)
                 model.train()
 
