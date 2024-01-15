@@ -35,10 +35,12 @@ class DDPM(nn.Module):
         return pred_noise
 
     @torch.no_grad()
-    def sampling(self, n_samples, clipped_reverse_diffusion=True, device="cuda"):
+    def sampling(self, n_samples, clipped_reverse_diffusion=True, device="cuda", no_noise=False):
         x_t = torch.randn((n_samples, self.in_channels, self.image_size, self.image_size)).to(device)
         for i in tqdm(range(self.timesteps - 1, -1, -1), desc="Sampling"):
             noise = torch.randn_like(x_t).to(device)
+            if no_noise:
+                noise *= 0
             t = torch.tensor([i for _ in range(n_samples)]).to(device)
 
             if clipped_reverse_diffusion:

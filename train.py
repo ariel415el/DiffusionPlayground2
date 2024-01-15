@@ -4,7 +4,6 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 
 from DDPM import DDPM
-from models import Unet, FC
 from utils.utils import ExponentialMovingAverage
 import os
 import argparse
@@ -29,7 +28,8 @@ def parse_args():
     parser.add_argument('--model_base_dim', type=int, help='base dim of Unet', default=64)
     parser.add_argument('--timesteps', type=int, help='sampling steps of DDPM', default=1000)
 
-    parser.add_argument('--n_steps', type=int, default=500000)
+    parser.add_argument('--n_steps', type=int, default=50000)
+    parser.add_argument('--n_adjust_epochs', type=int, default=100)
     parser.add_argument('--model_ema_steps', type=int, help='ema model evaluation interval', default=10)
     parser.add_argument('--model_ema_decay', type=float, help='ema model decay', default=0.995)
     parser.add_argument('--lr', type=float, default=0.001)
@@ -53,9 +53,14 @@ def parse_args():
 def get_model(args, device):
     in_channels = 1 if args.gray_scale else 3
     if args.arch == 'unet':
+        from models import Unet
         denoiser = Unet(args.timesteps, 256, in_channels, in_channels, args.model_base_dim, depth=args.denoiser_depth)
     elif args.arch == "fc":
-        denoiser = FC(args.image_size, args.timesteps, 256, in_channels, in_channels, args.model_base_dim, args.denoiser_depth)
+        from models.FC import FC
+        denoiser = FC(args.im_size, args.timesteps, 256, in_channels, in_channels, args.model_base_dim, args.denoiser_depth)
+    elif args.arch == "conv":
+        from models.conv import Conv
+        denoiser = Conv(args.im_size, args.timesteps, 256, args.model_base_dim, in_channels, in_channels)
     else:
         ValueError("bad architecture name")
     model = DDPM(denoiser, timesteps=args.timesteps,image_size=args.im_size, in_channels=in_channels).to(device)
@@ -68,9 +73,8 @@ def get_model(args, device):
 
 
 def get_ema(args, model, device, dataloader):
-    dataset_size = len(dataloader.dataset)
     if args.model_ema_decay < 1:
-        adjust = args.model_ema_steps * (dataset_size / args.n_steps)
+        adjust = args.batch_size * args.model_ema_steps / args.n_adjust_epochs  # This was the formula in the original code
         alpha = 1.0 - args.model_ema_decay
         alpha = min(1.0, alpha * adjust)
         model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
@@ -88,8 +92,7 @@ def main(args):
     loss_fn = nn.MSELoss(reduction='mean')
 
     optimizer = AdamW(model.parameters(), lr=args.lr)
-    if args.lr_scheduler:
-        scheduler = OneCycleLR(optimizer, args.lr, total_steps=args.n_steps
+    scheduler = OneCycleLR(optimizer, args.lr, total_steps=args.n_adjust_epochs * len(train_dataloader)
                                                  , pct_start=0.25, anneal_strategy='cos')
 
     global_steps = 0
@@ -102,22 +105,25 @@ def main(args):
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            if args.lr_scheduler:
-                scheduler.step()
+
             if global_steps % args.model_ema_steps == 0:
                 model_ema.update_parameters(model)
+            epoch = global_steps / len(train_dataloader)
+            if epoch < args.n_adjust_epochs:
+                scheduler.step()
+
             global_steps += 1
             loss = loss.detach().cpu().item()
-            logger.log(loss, global_steps)
+            logger.log(loss, scheduler.get_last_lr()[0], global_steps)
             if global_steps % args.log_freq == 0:
                 if logger.is_best_loss(loss):
                     ckpt = {"model": model.state_dict()}
                     torch.save(ckpt, os.path.join(logger.out_dir, "best.pth"))
 
-                model.eval()
-                samples = model.module.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
+                model_ema.eval()
+                samples = model_ema.module.sampling(args.n_samples, clipped_reverse_diffusion=True, device=device)
                 logger.plot(samples, global_steps)
-                model.train()
+                model_ema.train()
 
 
 if __name__ == "__main__":

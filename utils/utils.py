@@ -17,3 +17,14 @@ class ExponentialMovingAverage(torch.optim.swa_utils.AveragedModel):
         super().__init__(model, device, ema_avg, use_buffers=True)
 
 
+def parse_classnames_and_kwargs(string, kwargs=None):
+    """Import a class and create an instance with kwargs from strings in format
+    '<class_name>_<kwarg_1_name>=<kwarg_1_value>_<kwarg_2_name>=<kwarg_2_value>"""
+    name_and_args = string.split('-')
+    class_name = name_and_args[0]
+    if kwargs is None:
+        kwargs = dict()
+    for arg in name_and_args[1:]:
+        name, value = arg.split("=")
+        kwargs[name] = value
+    return class_name, kwargs
